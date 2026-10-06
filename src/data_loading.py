@@ -5,7 +5,7 @@ DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "student-por.csv"
 
 
 def load_data(path=DATA_PATH):
-    """Beolvassa a student-por.csv adathalmazt."""
+    """A student-por.csv adathalmaz beolvasása"""
     return pd.read_csv(path)
 
 
