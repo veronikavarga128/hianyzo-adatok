@@ -90,7 +90,7 @@ hianyzo-adatok/
 Szükséges: Python 3 (a fejlesztés Python 3.14-gyel történt).
 
 ```powershell
-git clone <a repó címe>
+git clone -b dev https://github.com/veronikavarga128/hianyzo-adatok.git
 cd hianyzo-adatok
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
