@@ -15,7 +15,8 @@ from src.models import MODELS
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG = ROOT / "config" / "config.json"
 
-VALID_MECHANISMS = ["MCAR", "MAR"]
+VALID_MECHANISMS = ["MCAR", "MAR", "MNAR"]
+VALID_IMPUTERS = IMPUTERS + ["listwise"]
 
 
 def load_config(path):
@@ -25,7 +26,7 @@ def load_config(path):
 
     checks = [
         ("mechanisms", VALID_MECHANISMS),
-        ("imputers", IMPUTERS),
+        ("imputers", VALID_IMPUTERS),
         ("models", MODELS),
     ]
     for key, valid in checks:
@@ -70,7 +71,7 @@ def main(cfg):
             elapsed = time.time() - start
             eta = elapsed / i * (len(grid) - i)
             print(f"{i}/{len(grid)} futás kész  (eltelt: {elapsed/60:.1f} perc, hátra: ~{eta/60:.1f} perc)")
-            pd.DataFrame(rows).to_csv(results_path, index=False)
+            pd.DataFrame(rows).to_csv(results_path, index=False)  # köztes mentés
 
     print(f"\nKész. Eredmények: {results_path}")
 

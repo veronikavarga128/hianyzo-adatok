@@ -9,8 +9,9 @@ def inject_missing(df, rate, mechanism="MCAR", driver="age", target=TARGET, seed
 
     df        : a teljes (hiánymentes) adattábla
     rate      : a hiányzó cellák aránya az érintett oszlopokban (pl. 0.2 = 20%)
-    mechanism : "MCAR" (teljesen véletlen) vagy "MAR" (a hiány valószínűsége
-                egy megfigyelt oszloptól, a `driver`-től függ)
+    mechanism : "MCAR" (teljesen véletlen), "MAR" (a hiány valószínűsége egy
+                megfigyelt oszloptól, a `driver`-től függ) vagy "MNAR" (a hiány
+                valószínűsége magától a hiányzó értéktől függ)
     driver    : a MAR-t vezérlő oszlop. Ez az oszlop és a célváltozó sosem
                 veszít értéket (MCAR esetén is kimarad, hogy a két mechanizmus
                 ugyanazokra a cellákra legyen összevethető).
@@ -22,18 +23,27 @@ def inject_missing(df, rate, mechanism="MCAR", driver="age", target=TARGET, seed
     """
     if not 0 < rate < 1:
         raise ValueError("A rate legyen 0 és 1 között.")
-    if mechanism not in ("MCAR", "MAR"):
-        raise ValueError("A mechanism értéke 'MCAR' vagy 'MAR' lehet.")
+    if mechanism not in ("MCAR", "MAR", "MNAR"):
+        raise ValueError("A mechanism értéke 'MCAR', 'MAR' vagy 'MNAR' lehet.")
 
     rng = np.random.default_rng(seed)
 
     cols = [c for c in df.columns if c not in (target, driver)]
     n_rows, n_cols = len(df), len(cols)
     n_cells = n_rows * n_cols
-    k = round(rate * n_cells) 
+    k = round(rate * n_cells)
 
     if mechanism == "MCAR":
-        p = None 
+        p = None
+    elif mechanism == "MNAR":
+        weights = np.empty((n_rows, n_cols))
+        for j, c in enumerate(cols):
+            col = df[c]
+            if not pd.api.types.is_numeric_dtype(col):
+                col = pd.Series(pd.factorize(col, sort=True)[0], index=col.index)
+            weights[:, j] = 1 + 4 * col.rank(pct=True).to_numpy()
+        flat_w = weights.reshape(-1)
+        p = flat_w / flat_w.sum()
     else:
         pct = df[driver].rank(pct=True).to_numpy()
         row_weight = 1 + 4 * pct

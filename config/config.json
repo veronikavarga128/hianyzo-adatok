@@ -1,9 +1,9 @@
 {
   "seeds": 10,
   "use_grades": [true, false],
-  "mechanisms": ["MCAR", "MAR"],
+  "mechanisms": ["MCAR", "MAR", "MNAR"],
   "rates": [0.05, 0.10, 0.20, 0.30, 0.40],
-  "imputers": ["mean_mode", "knn", "iterative"],
+  "imputers": ["mean_mode", "knn", "iterative", "listwise"],
   "models": ["ridge", "random_forest", "gradient_boosting"],
   "results_path": "results/results.csv"
 }
