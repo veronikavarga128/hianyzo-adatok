@@ -11,14 +11,6 @@ from src.models import MODELS, build_pipeline
 
 
 def imputation_scores(pipe, X_clean, X_missing, mask):
-    """Az imputált értékek pontossága az eredeti (törölt) értékekhez képest.
-
-    Visszatér: (nrmse, acc)
-      nrmse : a számoszlopok normalizált RMSE-je (a hiba az oszlop szórásának
-              többszöröseként; minél kisebb, annál jobb)
-      acc   : a kategorikus oszlopoknál a pontosan eltalált értékek aránya
-              (minél nagyobb, annál jobb)
-    """
     prep = pipe.named_steps["prep"]
     cat_cols, num_cols = split_columns(X_clean)
     n_cat = len(cat_cols)
@@ -44,14 +36,6 @@ MIN_ROWS = 30
 
 
 def run_once(df, imputer, model, mechanism, rate, seed=0, use_grades=True):
-    """Egyetlen kísérlet: hiány bevitele, tanítás, kiértékelés a G3-ra.
-
-    imputer: "mean_mode", "knn", "iterative", "listwise" (sortörlés) vagy "none"
-    (hiány nélküli alapeset). Sortörlésnél a tanítóhalmazból töröljük a hiányos
-    sorokat; a teszthalmaz hiányait a modell nem tudja kezelni, ezért ott a
-    tanítóhalmaz átlagával/móduszával pótlunk. Ha kevesebb mint MIN_ROWS teljes
-    sor marad, a futás nem végezhető el, a mérőszámok üresek (NaN).
-    """
     y = df["G3"]
     X = df.drop(columns="G3")
     if not use_grades:

@@ -5,22 +5,6 @@ TARGET = "G3"
 
 
 def inject_missing(df, rate, mechanism="MCAR", driver="age", target=TARGET, seed=0):
-    """Hiányt visz be a jellemzőkbe (a célváltozóba soha).
-
-    df        : a teljes (hiánymentes) adattábla
-    rate      : a hiányzó cellák aránya az érintett oszlopokban (pl. 0.2 = 20%)
-    mechanism : "MCAR" (teljesen véletlen), "MAR" (a hiány valószínűsége egy
-                megfigyelt oszloptól, a `driver`-től függ) vagy "MNAR" (a hiány
-                valószínűsége magától a hiányzó értéktől függ)
-    driver    : a MAR-t vezérlő oszlop. Ez az oszlop és a célváltozó sosem
-                veszít értéket (MCAR esetén is kimarad, hogy a két mechanizmus
-                ugyanazokra a cellákra legyen összevethető).
-    seed      : véletlen mag a reprodukálhatósághoz
-
-    Visszatér: (df_missing, mask)
-      df_missing : a hiányos tábla (a hiányzó cellák NaN-ok)
-      mask       : ugyanekkora igaz/hamis tábla, True = törölt cella
-    """
     if not 0 < rate < 1:
         raise ValueError("A rate legyen 0 és 1 között.")
     if mechanism not in ("MCAR", "MAR", "MNAR"):

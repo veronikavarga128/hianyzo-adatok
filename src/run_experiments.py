@@ -20,7 +20,6 @@ VALID_IMPUTERS = IMPUTERS + ["listwise"]
 
 
 def load_config(path):
-    """Beolvassa és ellenőrzi a kísérlet beállításait."""
     with open(path, encoding="utf-8") as f:
         cfg = json.load(f)
 
@@ -40,7 +39,6 @@ def load_config(path):
 
 
 def build_grid(cfg):
-    """Az összes lefuttatandó kombináció listája."""
     grid = []
     for use_grades in cfg["use_grades"]:
         for seed in range(cfg["seeds"]):
