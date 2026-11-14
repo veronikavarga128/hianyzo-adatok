@@ -22,7 +22,7 @@ def build_pipeline(imputer_name, model_name, schema, seed=0):
     """Teljes lánc: előfeldolgozás + imputálás + modell egyetlen objektumban."""
     return Pipeline(
         [
-            ("prep", build_preprocessor(imputer_name, schema)),
+            ("prep", build_preprocessor(imputer_name, schema, seed)),
             ("model", build_model(model_name, seed)),
         ]
     )

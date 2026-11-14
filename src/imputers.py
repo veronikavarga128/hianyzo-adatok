@@ -6,23 +6,16 @@ from sklearn.impute import IterativeImputer, KNNImputer, SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
 
-IMPUTERS = ["mean_mode", "knn", "iterative"]
+IMPUTERS = ["mean_mode", "knn", "iterative", "autoencoder"]
 
 
 def split_columns(X):
-    """Szöveges (kategorikus) és számoszlopok szétválasztása."""
     cat_cols = X.select_dtypes(exclude="number").columns.tolist()
     num_cols = X.select_dtypes(include="number").columns.tolist()
     return cat_cols, num_cols
 
 
 class CodeRounder(BaseEstimator, TransformerMixin):
-    """A kategorikus oszlopok kódjait egész számra kerekíti.
-
-    A KNN és az iteratív imputer tört számot is adhat (pl. 2,4), de a
-    kategóriakód csak egész lehet (0, 1, 2, ...), ezért kerekítünk, és a
-    kódot az érvényes tartományba szorítjuk.
-    """
 
     def __init__(self, sizes):
         self.sizes = sizes 
@@ -36,19 +29,13 @@ class CodeRounder(BaseEstimator, TransformerMixin):
         return X
 
 
-def build_preprocessor(imputer_name, schema):
-    """Előfeldolgozó lánc: kódolás -> imputálás -> kerekítés -> one-hot.
-
-    schema: a TELJES (hiánymentes) jellemzőtábla. Csak az oszlopok neveit és
-    a lehetséges kategóriákat olvassuk ki belőle (az adatleírásból amúgy is
-    ismertek), értékeket nem tanulunk belőle.
-    """
+def build_preprocessor(imputer_name, schema, seed=0):
     cat_cols, num_cols = split_columns(schema)
     categories = [sorted(schema[c].dropna().unique()) for c in cat_cols]
     sizes = [len(c) for c in categories]
     n_cat = len(cat_cols)
 
-    # 1. szöveg -> számkódok (hiány = NaN)
+    # szöveg -> számkódok
     encode = ColumnTransformer(
         [
             (
@@ -64,7 +51,7 @@ def build_preprocessor(imputer_name, schema):
         ]
     )
 
-    # 2. imputálás
+    # imputálás
     if imputer_name == "mean_mode":
         impute = ColumnTransformer(
             [
@@ -76,10 +63,15 @@ def build_preprocessor(imputer_name, schema):
         impute = KNNImputer(n_neighbors=5)
     elif imputer_name == "iterative":
         impute = IterativeImputer(max_iter=10, random_state=0)
+    elif imputer_name == "autoencoder":
+
+        from src.nn_imputer import DenoisingAutoencoderImputer
+
+        impute = DenoisingAutoencoderImputer(sizes=sizes, random_state=seed)
     else:
         raise ValueError(f"Ismeretlen imputer: {imputer_name}")
 
-    # 4. kategóriakódok -> one-hot oszlopok
+    # kategóriakódok -> one-hot oszlopok
     onehot = ColumnTransformer(
         [
             (
@@ -99,7 +91,7 @@ def build_preprocessor(imputer_name, schema):
         [
             ("encode", encode),
             ("impute", impute),
-            ("round", CodeRounder(sizes)),  # 3. lépés
+            ("round", CodeRounder(sizes)),
             ("onehot", onehot),
         ]
     )
