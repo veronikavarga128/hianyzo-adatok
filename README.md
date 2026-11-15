@@ -1,6 +1,6 @@
 # Hiányzó adatok hatása és kezelése
 
-Gépi tanulás tárgy beadandó. A projekt azt vizsgálja, hogyan rontja a hiányzó adat a gépi tanulási modellek teljesítményét, melyik pótlási (imputációs) módszer működik jól melyik modellel, és van-e kölcsönhatás az imputációs módszer és a modell között.
+A projekt azt vizsgálja, hogyan rontja a hiányzó adat a gépi tanulási modellek teljesítményét, melyik pótlási (imputációs) módszer működik jól melyik modellel, és van-e kölcsönhatás az imputációs módszer és a modell között. A `neural` branch-en a klasszikus módszerek mellett egy neurális háló alapú imputer, egy zajszűrő autoencoder is szerepel.
 
 ## Kutatási kérdések
 
@@ -8,6 +8,7 @@ Gépi tanulás tárgy beadandó. A projekt azt vizsgálja, hogyan rontja a hián
 2. Melyik imputációs módszer a legjobb az egyes hiányarányoknál és hiánytípusoknál, és megéri-e egyáltalán pótolni az adatot ahelyett, hogy a hiányos sorokat töröljük?
 3. Van-e kölcsönhatás az imputáció és a modell között, vagyis ugyanaz a módszer más modellnél más eredményt ad-e?
 4. Összefügg-e az imputált értékek pontossága a modell végső teljesítményével?
+5. Hogyan teljesít a zajszűrő autoencoder mint imputer a klasszikus módszerekhez képest, és mikor éri meg a bonyolultsága?
 
 ## Az adathalmaz
 
@@ -26,11 +27,11 @@ A kísérlet az alábbi tényezők minden kombinációját lefuttatja:
 | Jellemzők | `G1`/`G2`-vel és nélkülük |
 | Hiánytípus | MCAR (teljesen véletlen), MAR (az életkortól függő hiány), MNAR (a cella saját értékétől függő hiány) |
 | Hiányarány | 5%, 10%, 20%, 30%, 40% |
-| Imputációs módszer | átlag/módusz, KNN, iteratív, valamint a sortörlés (a hiányos sorok eldobása) viszonyítási alapként |
+| Imputációs módszer | átlag/módusz, KNN, iteratív, zajszűrő autoencoder (neurális háló), valamint a sortörlés (a hiányos sorok eldobása) viszonyítási alapként |
 | Modell | Ridge-regresszió, random forest, gradient boosting |
 | Ismétlés | 10 különböző véletlen seed |
 
-Minden kombináció mellett lefut egy hiány nélküli alapeset is, ez adja a felső korlátot. A teljes kísérlet 3660 futásból áll.
+Minden kombináció mellett lefut egy hiány nélküli alapeset is, ez adja a felső korlátot. A klasszikus módszerek (átlag/módusz, KNN, iteratív, sortörlés) 3660 futást adnak, az autoencoder további 900-at, ezeket külön konfiguráció és külön eredményfájl tartalmazza. A hiány nélküli alapeset mindkét fájlban szerepel, az elemzés az ismétlődést kiszűri.
 
 Fontos tervezési szabályok:
 
@@ -41,6 +42,17 @@ Fontos tervezési szabályok:
 - A sortörlésnél a tanítóhalmaz hiányos sorait eldobjuk, és csak a teljes sorokon tanítunk. A teszthalmaz hiányos értékeit ilyenkor átlaggal/módusszal pótoljuk, hogy a teszthalmaz minden módszernél ugyanaz maradjon. Ha 30-nál kevesebb teljes sor marad, a futás nem kivitelezhető: ilyenkor az eredmény hiányzó érték (NaN), a megmaradt sorok száma pedig az `n_train` oszlopba kerül.
 - Egy adott seednél minden módszer és modell ugyanazt a hiányt és ugyanazt a 80/20 arányú tanító/teszt felosztást kapja, így a különbségek a módszerekből adódnak.
 - Minden ismétlés külön véletlen seedet használ, így a futások reprodukálhatók.
+
+## A zajszűrő autoencoder imputer
+
+Az autoencoder egy neurális háló (PyTorch), amely egy adatsort kap bemenetül, és ugyanazt a sort próbálja visszaállítani. A zajszűrő (denoising) változatnál tanítás közben az ismert értékek egy részét véletlenszerűen eltakarjuk, és a háló ezeket állítja vissza.
+
+- **Bemenet:** a számoszlopok szabványosított értéke, a kategorikus oszlopok one-hot vektora, és minden oszlophoz egy 0/1 jelző, hogy az érték ismert-e (a hiányzó cella értéke 0).
+- **Felépítés:** bemenet → 64 → 16 → 64 → kimenet, ReLU aktivációval (a 16 neuronos réteg a szűk keresztmetszet).
+- **Tanítás:** Adam optimalizáló (tanulási ráta 0,001, weight decay 0,00001), 150 epoch, 128-as batch. Minden epochban az ismert cellák 25%-át újra eltakarjuk, és a veszteséget csak ezeken számoljuk (számoknál MSE, kategóriáknál keresztentrópia).
+- **Imputálás:** a háló a hiányzó számcellák helyére a becsült értéket írja, a kategorikus celláknál a legvalószínűbb kategóriát. Az ismert értékek érintetlenek maradnak.
+- **Reprodukálhatóság:** a háló véletlen magja a futás seedje, így azonos seed ugyanazt az eredményt adja.
+- **Korlát:** a hiperparaméterek (rétegméretek, maszkolási arány, epochok száma) rögzített alapértékek, hangolásukra nem került sor. Az adathalmaz kis mérete (649 sor) szintén korlátozza a neurális háló lehetőségeit.
 
 ## Mérőszámok
 
@@ -59,42 +71,48 @@ A sortörlésnél nincs imputáció, ezért az `imp_nrmse` és az `imp_acc` ott,
 ```
 hianyzo-adatok/
 ├── config/
-│   └── config.json            # a kísérlet beállításai
+│   ├── config.json            # a klasszikus módszerek kísérletének beállításai
+│   └── config_autoencoder.json  # az autoencoder kísérlet beállításai
 ├── data/
 │   └── student-por.csv        # az eredeti adathalmaz
 ├── src/
 │   ├── data_loading.py        # az adathalmaz betöltése
 │   ├── missingness.py         # hiánygenerátor
 │   ├── imputers.py            # kódolás, imputációs módszerek
+│   ├── nn_imputer.py          # a zajszűrő autoencoder imputer
 │   ├── models.py              # a modellek és a teljes feldolgozási lánc
 │   ├── evaluate.py            # egy kísérlet lefuttatása és kiértékelése
-│   └── run_experiments.py     # a teljes kísérletsorozat
+│   ├── run_experiments.py     # a teljes kísérletsorozat
+│   └── tensorboard_demo.py    # TensorBoard-napló az autoencoderről
 ├── notebooks/
 │   ├── 01_eda.ipynb           # feltáró adatelemzés
 │   └── 02_analysis.ipynb      # az eredmények elemzése, ábrák
-├── results/                   # eredménytáblázat és ábrák
+├── results/                   # eredménytáblák (results.csv, results_autoencoder.csv) és ábrák
+├── runs/                      # TensorBoard-naplók (nem része a repónak)
 ├── requirements.txt
 └── README.md
 ```
 
 ### Mit csinálnak az egyes fájlok
 
-- **`config/config.json`**: a kísérlet összes beállítása egy helyen: az ismétlések száma, a `G1`/`G2` változatai, a hiánytípusok, a hiányarányok, az imputációs módszerek, a modellek és az eredményfájl helye. A kísérlet módosításához elég ezt a fájlt átírni, a kódhoz nem kell nyúlni.
+- **`config/config.json`**: a kísérlet összes beállítása egy helyen: az ismétlések száma, a `G1`/`G2` változatai, a hiánytípusok, a hiányarányok, az imputációs módszerek, a modellek és az eredményfájl helye. A kísérlet módosításához elég ezt a fájlt átírni, a kódhoz nem kell nyúlni. A `config/config_autoencoder.json` ugyanilyen felépítésű, de csak az autoencoder imputert futtatja, és az eredményt a `results/results_autoencoder.csv` fájlba menti.
 - **`src/data_loading.py`**: a `load_data()` függvény beolvassa a `data/student-por.csv` fájlt egy `pandas` táblába.
 - **`src/missingness.py`**: az `inject_missing(df, rate, mechanism, seed=...)` függvény kontrolláltan hiányt visz be a jellemzők közé. MCAR esetén minden cella egyforma eséllyel esik ki, MAR esetén az idősebb diákok celláinak nagyobb az esélye kiesni, MNAR esetén pedig a cella saját értéke számít: az oszlopán belül minél nagyobb az érték, annál nagyobb eséllyel esik ki (a legnagyobbnál kb. ötszörös eséllyel; a szöveges oszlopoknál a kategóriák betűrendje adja a sorrendet, ez önkényes, de rögzített). Visszaadja a hiányos táblát és egy maszkot is, amely megmutatja, mely cellákat törölte. Közvetlenül futtatva önellenőrzést végez: kiírja a kért és a tényleges hiányarányt, és ellenőrzi, hogy a célváltozó érintetlen, valamint hogy ugyanaz a seed ugyanazt a hiányt adja.
-- **`src/imputers.py`**: a `build_preprocessor()` összerakja az előfeldolgozó láncot. Lépései: a szöveges oszlopok számkódolása, a hiány pótlása, a kategóriakódok egészre kerekítése (a KNN és az iteratív módszer tört számot is adhat), végül a kategóriák 0/1 oszlopokra bontása (one-hot). Az imputációs módszerek (a sortörlés nem imputáció, azt az `evaluate.py` kezeli): átlag/módusz (`SimpleImputer`: számoknál átlag, kategóriáknál a leggyakoribb érték), KNN (`KNNImputer`, 5 szomszéddal) és iteratív (`IterativeImputer`, MICE-jellegű).
+- **`src/imputers.py`**: a `build_preprocessor()` összerakja az előfeldolgozó láncot. Lépései: a szöveges oszlopok számkódolása, a hiány pótlása, a kategóriakódok egészre kerekítése (a KNN és az iteratív módszer tört számot is adhat), végül a kategóriák 0/1 oszlopokra bontása (one-hot). Az imputációs módszerek (a sortörlés nem imputáció, azt az `evaluate.py` kezeli): átlag/módusz (`SimpleImputer`: számoknál átlag, kategóriáknál a leggyakoribb érték), KNN (`KNNImputer`, 5 szomszéddal) iteratív (`IterativeImputer`, MICE-jellegű) és zajszűrő autoencoder (a `src/nn_imputer.py`-ból, csak ennél töltődik be a PyTorch). A `build_preprocessor()` megkapja a futás seedjét is, ezt az autoencoder használja.
+- **`src/nn_imputer.py`**: a `DenoisingAutoencoderImputer` osztály, egy `scikit-learn` kompatibilis imputer (`fit` és `transform`), amely a kódolt táblázat hiányzó celláit a fent leírt zajszűrő autoencoderrel pótolja. Opcionálisan TensorBoard-naplót is ír a tanítás veszteségéről.
 - **`src/models.py`**: a `build_pipeline()` az előfeldolgozást és a modellt egyetlen `Pipeline`-ba fűzi. A modellek: Ridge-regresszió (skálázással), random forest (200 fa) és gradient boosting.
 - **`src/evaluate.py`**: a `run_once()` egyetlen kísérletet futtat le (hiány bevitele, 80/20 felosztás, tanítás, kiértékelés a tiszta `G3`-ra), és visszaadja a fenti mérőszámokat. Az imputáció pontosságát a törölt cellák eredeti értékéhez méri. A sortörlésnél a tanítóhalmaz hiányos sorait eldobja, és ha 30-nál kevesebb teljes sor marad, a futást nem kivitelezhetőnek jelöli (üres mérőszámok, kitöltött `n_train`).
 - **`src/run_experiments.py`**: beolvassa a `config/config.json` fájlt (és ellenőrzi, hogy nincs-e benne ismeretlen érték), összeállítja az összes kombinációt, lefuttatja őket, és az eredményt a `results/results.csv` fájlba menti (a haladást kiírja, és 50 futásonként menti a részeredményt). Parancssori kapcsolók: `--config <fájl>` másik konfigurációs fájlhoz, `--seeds <szám>` az ismétlések számának átírásához.
+- **`src/tensorboard_demo.py`**: kísérletkövetés TensorBoarddal. Egy kiválasztott beállításra naplózza az autoencoder tanítási görbéjét (veszteség epochonként) és a végeredményt (RMSE, `imp_nrmse`, `imp_acc`), valamint az összes imputer RMSE-jét és imputációs pontosságát a hiányarány függvényében. Parancssori kapcsolók: `--mechanism`, `--rate`, `--model`, `--seed`, `--no-grades`, `--logdir`.
 - **`notebooks/01_eda.ipynb`**: az adat megismerése (eloszlások, összefüggések, kategóriák).
-- **`notebooks/02_analysis.ipynb`**: a `results/results.csv` feldolgozása, táblázatok és ábrák a kutatási kérdésekhez. Az ábrákat a `results/` mappába menti.
+- **`notebooks/02_analysis.ipynb`**: a `results/results.csv` és a `results/results_autoencoder.csv` összefésülése és feldolgozása, táblázatok és ábrák a kutatási kérdésekhez. Az ábrákat a `results/` mappába menti.
 
 ## Telepítés
 
-Szükséges: Python 3 (a fejlesztés Python 3.14-gyel történt).
+Szükséges: Python 3 (a fejlesztés Python 3.14-gyel történt). Az autoencoderhez PyTorch kell, amit a `requirements.txt` is tartalmaz (a TensorBoarddal együtt).
 
 ```powershell
-git clone -b dev https://github.com/veronikavarga128/hianyzo-adatok.git
+git clone -b neural https://github.com/veronikavarga128/hianyzo-adatok.git
 cd hianyzo-adatok
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -119,7 +137,7 @@ Minden parancsot a projekt gyökeréből, aktivált virtuális környezetben kel
    python -m src.run_experiments --seeds 1
    ```
 
-3. **A teljes kísérlet** 10 ismétléssel (az alapértelmezett, 3660 futás):
+3. **A teljes kísérlet** 10 ismétléssel (az alapértelmezett, a klasszikus módszerekre, 3660 futás):
 
    ```powershell
    python -m src.run_experiments
@@ -127,15 +145,32 @@ Minden parancsot a projekt gyökeréből, aktivált virtuális környezetben kel
 
    Az alapértelmezett beállításokat a `config/config.json` tartalmazza. Az eredmény a `results/results.csv` fájlba kerül (minden futás egy sor, a konfiguráció és a mérőszámok oszlopaival). A sortörlés nem kivitelezhető futásainál a hibamérőszámok üresek. A fájl minden futtatásnál felülíródik.
 
-4. **Az elemzés:** `notebooks/02_analysis.ipynb`
+4. **Az autoencoder kísérlet** (960 futás, a számítógéptől függően kb. egy óra):
+
+   ```powershell
+   python -m src.run_experiments --config config/config_autoencoder.json
+   ```
+
+   Az eredmény a `results/results_autoencoder.csv` fájlba kerül. Gyors próbához: `--seeds 1` (kb. 5 perc).
+
+5. **TensorBoard-napló** (kb. egy perc) és megtekintés:
+
+   ```powershell
+   python -m src.tensorboard_demo
+   tensorboard --logdir runs
+   ```
+
+   Ezután a `http://localhost:6006` címen látható a tanítási görbe (`loss` szakasz) és az imputerek összevetése (`rmse_vs_hianyarany`, `imp_nrmse_vs_hianyarany`, `imp_acc_vs_hianyarany`).
+
+6. **Az elemzés:** `notebooks/02_analysis.ipynb` (mindkét eredményfájlra szükség van, a klasszikus és az autoencoderes futásra is)
 
 ## Eredmények
 
-Az eredményeket, az ábrákat és a következtetéseket a külön dokumentáció tartalmazza. Az elemző notebook az ábrákat a `results/` mappába is elmenti.
+Az eredményeket, az ábrákat és a következtetéseket a külön dokumentáció tartalmazza. Az elemző notebook az ábrákat a `results/` mappába is elmenti. A nyers eredmények a `results/results.csv` (klasszikus módszerek) és a `results/results_autoencoder.csv` (autoencoder) fájlokban vannak.
 
 ## Felhasznált eszközök
 
-Python 3, `pandas`, `NumPy`, `scikit-learn`, `matplotlib`, `seaborn`, Jupyter.
+Python 3, `pandas`, `NumPy`, `scikit-learn`, `PyTorch`, `TensorBoard`, `matplotlib`, `seaborn`, Jupyter.
 
 ## Forrás
 
